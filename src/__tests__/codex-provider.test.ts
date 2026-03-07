@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 // ── SSE utils tests ─────────────────────────────────────────
 
@@ -328,6 +331,95 @@ describe('CodexProvider', () => {
       } else {
         process.env.CTI_CODEX_PASS_MODEL = old;
       }
+    }
+  });
+
+  it('passes sandbox mode and additional directories from env', async () => {
+    const oldSandbox = process.env.CTI_CODEX_SANDBOX_MODE;
+    const oldDirs = process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES;
+    process.env.CTI_CODEX_SANDBOX_MODE = 'danger-full-access';
+    process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '/tmp/one,/tmp/two';
+    try {
+      const { CodexProvider } = await import('../codex-provider.js');
+      const { PendingPermissions } = await import('../permission-gateway.js');
+      const provider = new CodexProvider(new PendingPermissions());
+
+      let capturedStartOptions: Record<string, unknown> | undefined;
+      const mockThread = {
+        runStreamed: () => ({
+          events: (async function* () {
+            yield { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } };
+          })(),
+        }),
+      };
+      (provider as any).sdk = { Codex: class { constructor() {} } };
+      (provider as any).codex = {
+        startThread: (opts: Record<string, unknown>) => {
+          capturedStartOptions = opts;
+          return mockThread;
+        },
+      };
+
+      await collectStream(provider.streamChat({
+        prompt: 'hello',
+        sessionId: 'sandbox-config-session',
+      }));
+
+      assert.equal(capturedStartOptions?.sandboxMode, 'danger-full-access');
+      assert.deepEqual(capturedStartOptions?.additionalDirectories, ['/tmp/one', '/tmp/two']);
+    } finally {
+      if (oldSandbox === undefined) delete process.env.CTI_CODEX_SANDBOX_MODE;
+      else process.env.CTI_CODEX_SANDBOX_MODE = oldSandbox;
+      if (oldDirs === undefined) delete process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES;
+      else process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = oldDirs;
+    }
+  });
+
+  it('prepends prompt preamble file and session instructions', async () => {
+    const oldPreambleFile = process.env.CTI_CODEX_PROMPT_PREAMBLE_FILE;
+    const oldBridgePath = process.env.CTI_MATLAB_BRIDGE_PATH;
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cti-codex-preamble-'));
+    const preambleFile = path.join(tempDir, 'preamble.md');
+    fs.writeFileSync(preambleFile, 'Use `{{CTI_MATLAB_BRIDGE_PATH}}` only.');
+    process.env.CTI_CODEX_PROMPT_PREAMBLE_FILE = preambleFile;
+    process.env.CTI_MATLAB_BRIDGE_PATH = '/tmp/matlab-bridge.sh';
+    try {
+      const { CodexProvider } = await import('../codex-provider.js');
+      const { PendingPermissions } = await import('../permission-gateway.js');
+      const provider = new CodexProvider(new PendingPermissions());
+
+      let capturedInput: unknown;
+      const mockThread = {
+        runStreamed: (input: unknown) => {
+          capturedInput = input;
+          return {
+            events: (async function* () {
+              yield { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } };
+            })(),
+          };
+        },
+      };
+      (provider as any).sdk = { Codex: class { constructor() {} } };
+      (provider as any).codex = {
+        startThread: () => mockThread,
+      };
+
+      await collectStream(provider.streamChat({
+        prompt: 'Run the check.',
+        sessionId: 'prompt-preamble-session',
+        systemPrompt: 'Stay concise.',
+      }));
+
+      assert.equal(
+        capturedInput,
+        'Use `/tmp/matlab-bridge.sh` only.\n\nSession instructions:\nStay concise.\n\nRun the check.'
+      );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      if (oldPreambleFile === undefined) delete process.env.CTI_CODEX_PROMPT_PREAMBLE_FILE;
+      else process.env.CTI_CODEX_PROMPT_PREAMBLE_FILE = oldPreambleFile;
+      if (oldBridgePath === undefined) delete process.env.CTI_MATLAB_BRIDGE_PATH;
+      else process.env.CTI_MATLAB_BRIDGE_PATH = oldBridgePath;
     }
   });
 

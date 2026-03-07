@@ -55,6 +55,56 @@ function shouldPassModelToCodex(): boolean {
   return process.env.CTI_CODEX_PASS_MODEL === 'true';
 }
 
+const VALID_SANDBOX_MODES = new Set(['read-only', 'workspace-write', 'danger-full-access']);
+
+function parseListEnv(name: string): string[] {
+  const raw = process.env[name];
+  if (!raw) return [];
+  return raw
+    .split(/[\n,]+/)
+    .map(value => value.trim())
+    .filter(Boolean);
+}
+
+function getConfiguredSandboxMode(): 'read-only' | 'workspace-write' | 'danger-full-access' | undefined {
+  const raw = process.env.CTI_CODEX_SANDBOX_MODE?.trim();
+  if (!raw || !VALID_SANDBOX_MODES.has(raw)) return undefined;
+  return raw as 'read-only' | 'workspace-write' | 'danger-full-access';
+}
+
+function getConfiguredAdditionalDirectories(): string[] | undefined {
+  const dirs = parseListEnv('CTI_CODEX_ADDITIONAL_DIRECTORIES');
+  return dirs.length > 0 ? dirs : undefined;
+}
+
+function renderEnvTemplate(text: string): string {
+  return text.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_match, name) => process.env[name] || '');
+}
+
+function loadPromptPreamble(): string {
+  const inline = process.env.CTI_CODEX_PROMPT_PREAMBLE?.trim();
+  if (inline) return renderEnvTemplate(inline);
+
+  const file = process.env.CTI_CODEX_PROMPT_PREAMBLE_FILE?.trim();
+  if (!file) return '';
+
+  try {
+    return renderEnvTemplate(fs.readFileSync(file, 'utf-8').trim());
+  } catch (err) {
+    console.warn(`[codex-provider] Failed to read prompt preamble file: ${file}`, err);
+    return '';
+  }
+}
+
+function buildPromptText(prompt: string, systemPrompt?: string): string {
+  const sections: string[] = [];
+  const preamble = loadPromptPreamble();
+  if (preamble) sections.push(preamble);
+  if (systemPrompt?.trim()) sections.push(`Session instructions:\n${systemPrompt.trim()}`);
+  sections.push(prompt);
+  return sections.join('\n\n');
+}
+
 function looksLikeClaudeModel(model?: string): boolean {
   return !!model && /^claude[-_]/i.test(model);
 }
@@ -135,10 +185,15 @@ export class CodexProvider implements LLMProvider {
 
             const approvalPolicy = toApprovalPolicy(params.permissionMode);
             const passModel = shouldPassModelToCodex();
+            const sandboxMode = getConfiguredSandboxMode();
+            const additionalDirectories = getConfiguredAdditionalDirectories();
+            const promptText = buildPromptText(params.prompt, params.systemPrompt);
 
             const threadOptions: Record<string, unknown> = {
               ...(passModel && params.model ? { model: params.model } : {}),
               ...(params.workingDirectory ? { workingDirectory: params.workingDirectory } : {}),
+              ...(sandboxMode ? { sandboxMode } : {}),
+              ...(additionalDirectories ? { additionalDirectories } : {}),
               approvalPolicy,
             };
 
@@ -152,7 +207,7 @@ export class CodexProvider implements LLMProvider {
             let input: string | Array<Record<string, string>>;
             if (imageFiles.length > 0) {
               const parts: Array<Record<string, string>> = [
-                { type: 'text', text: params.prompt },
+                { type: 'text', text: promptText },
               ];
               for (const file of imageFiles) {
                 const ext = MIME_EXT[file.type] || '.png';
@@ -163,7 +218,7 @@ export class CodexProvider implements LLMProvider {
               }
               input = parts;
             } else {
-              input = params.prompt;
+              input = promptText;
             }
 
             let retryFresh = false;
