@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { maskSecret, configToSettings, type Config } from '../config.js';
+import { applyProcessEnvEntries, maskSecret, configToSettings, type Config } from '../config.js';
 
 // ── maskSecret ──
 
@@ -21,6 +21,33 @@ describe('maskSecret', () => {
 
   it('handles exactly 5 chars', () => {
     assert.equal(maskSecret('12345'), '*2345');
+  });
+});
+
+// ── process env hydration ──
+
+describe('applyProcessEnvEntries', () => {
+  it('hydrates missing CTI_* variables without overwriting existing values', () => {
+    const oldSandbox = process.env.CTI_CODEX_SANDBOX_MODE;
+    const oldToken = process.env.CTI_TG_BOT_TOKEN;
+    process.env.CTI_CODEX_SANDBOX_MODE = 'workspace-write';
+    delete process.env.CTI_TG_BOT_TOKEN;
+    try {
+      applyProcessEnvEntries(new Map([
+        ['CTI_CODEX_SANDBOX_MODE', 'danger-full-access'],
+        ['CTI_TG_BOT_TOKEN', '123456:secret'],
+        ['OPENAI_API_KEY', 'should-not-copy'],
+      ]));
+
+      assert.equal(process.env.CTI_CODEX_SANDBOX_MODE, 'workspace-write');
+      assert.equal(process.env.CTI_TG_BOT_TOKEN, '123456:secret');
+      assert.equal(process.env.OPENAI_API_KEY, undefined);
+    } finally {
+      if (oldSandbox === undefined) delete process.env.CTI_CODEX_SANDBOX_MODE;
+      else process.env.CTI_CODEX_SANDBOX_MODE = oldSandbox;
+      if (oldToken === undefined) delete process.env.CTI_TG_BOT_TOKEN;
+      else process.env.CTI_TG_BOT_TOKEN = oldToken;
+    }
   });
 });
 
