@@ -2,7 +2,24 @@
 # macOS supervisor — launchd-based process management.
 # Sourced by daemon.sh; expects CTI_HOME, SKILL_DIR, PID_FILE, STATUS_FILE, LOG_FILE.
 
-LAUNCHD_LABEL="com.claude-to-im.bridge"
+DEFAULT_LAUNCHD_LABEL="com.claude-to-im.bridge"
+DEFAULT_CTI_HOME="$HOME/.claude-to-im"
+
+slugify_label_suffix() {
+  local raw="$1"
+  printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+if [ -n "${CTI_BRIDGE_LABEL:-}" ]; then
+  LAUNCHD_LABEL="$CTI_BRIDGE_LABEL"
+elif [ "$CTI_HOME" = "$DEFAULT_CTI_HOME" ]; then
+  LAUNCHD_LABEL="$DEFAULT_LAUNCHD_LABEL"
+else
+  CTI_INSTANCE_SUFFIX="$(slugify_label_suffix "$(basename "$CTI_HOME")")"
+  [ -n "$CTI_INSTANCE_SUFFIX" ] || CTI_INSTANCE_SUFFIX="custom"
+  LAUNCHD_LABEL="$DEFAULT_LAUNCHD_LABEL.$CTI_INSTANCE_SUFFIX"
+fi
+
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST_FILE="$PLIST_DIR/$LAUNCHD_LABEL.plist"
 
