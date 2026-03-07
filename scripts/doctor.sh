@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-CTI_HOME="$HOME/.claude-to-im"
+CTI_HOME="${CTI_HOME:-$HOME/.claude-to-im}"
 CONFIG_FILE="$CTI_HOME/config.env"
 PID_FILE="$CTI_HOME/runtime/bridge.pid"
 LOG_FILE="$CTI_HOME/logs/bridge.log"
@@ -36,6 +36,7 @@ fi
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CTI_RUNTIME=$(grep "^CTI_RUNTIME=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'" | tr -d '"')
 CTI_RUNTIME="${CTI_RUNTIME:-claude}"
+echo "CTI_HOME: $CTI_HOME"
 echo "Runtime: $CTI_RUNTIME"
 echo ""
 
@@ -91,13 +92,17 @@ if [ "$CTI_RUNTIME" = "codex" ] || [ "$CTI_RUNTIME" = "auto" ]; then
   fi
 
   # Check Codex auth: any of CTI_CODEX_API_KEY / CODEX_API_KEY / OPENAI_API_KEY,
-  # or `codex auth status` showing logged-in (interactive login).
+  # or the current Codex CLI login status command showing a logged-in session.
   CODEX_AUTH=1
   if [ -n "${CTI_CODEX_API_KEY:-}" ] || [ -n "${CODEX_API_KEY:-}" ] || [ -n "${OPENAI_API_KEY:-}" ]; then
     CODEX_AUTH=0
   elif command -v codex &>/dev/null; then
-    CODEX_AUTH_OUT=$(codex auth status 2>&1 || true)
-    if echo "$CODEX_AUTH_OUT" | grep -qiE 'logged.in|authenticated'; then
+    if codex login --help >/dev/null 2>&1; then
+      CODEX_AUTH_OUT=$(codex login status 2>&1 || true)
+    else
+      CODEX_AUTH_OUT=$(codex auth status 2>&1 || true)
+    fi
+    if echo "$CODEX_AUTH_OUT" | grep -qiE 'logged.in|logged in|authenticated'; then
       CODEX_AUTH=0
     fi
   fi
@@ -105,7 +110,7 @@ if [ "$CTI_RUNTIME" = "codex" ] || [ "$CTI_RUNTIME" = "auto" ]; then
     check "Codex auth available (API key or login)" 0
   else
     if [ "$CTI_RUNTIME" = "codex" ]; then
-      check "Codex auth available (set OPENAI_API_KEY or run 'codex auth login')" 1
+      check "Codex auth available (set OPENAI_API_KEY or run 'codex login')" 1
     else
       check "Codex auth available (not found — needed only for Codex fallback)" 0
     fi
