@@ -29,10 +29,17 @@ const PID_FILE = path.join(RUNTIME_DIR, 'bridge.pid');
  * Resolve the LLM provider based on the runtime setting.
  * - 'claude' (default): uses Claude Code SDK via SDKLLMProvider
  * - 'codex': uses @openai/codex-sdk via CodexProvider
- * - 'auto': tries Claude first, falls back to Codex
+ * - 'gemini': uses direct Gemini CLI execution via GeminiProvider
+ * - 'auto': tries Claude first, falls back to Gemini
  */
 async function resolveProvider(config: Config, pendingPerms: PendingPermissions): Promise<LLMProvider> {
   const runtime = config.runtime;
+
+  if (runtime === 'gemini') {
+    const { GeminiProvider } = await import('./gemini-provider.js');
+    console.log('[claude-to-im] Using direct Gemini CLI execution provider');
+    return new GeminiProvider(pendingPerms);
+  }
 
   if (runtime === 'codex') {
     const { CodexProvider } = await import('./codex-provider.js');
@@ -45,9 +52,9 @@ async function resolveProvider(config: Config, pendingPerms: PendingPermissions)
       console.log(`[claude-to-im] Auto: using Claude CLI at ${cliPath}`);
       return new SDKLLMProvider(pendingPerms, cliPath, config.autoApprove);
     }
-    console.log('[claude-to-im] Auto: Claude CLI not found, falling back to Codex');
-    const { CodexProvider } = await import('./codex-provider.js');
-    return new CodexProvider(pendingPerms);
+    console.log('[claude-to-im] Auto: Claude CLI not found, falling back to Gemini');
+    const { GeminiProvider } = await import('./gemini-provider.js');
+    return new GeminiProvider(pendingPerms);
   }
 
   // Default: claude
@@ -57,7 +64,7 @@ async function resolveProvider(config: Config, pendingPerms: PendingPermissions)
       '[claude-to-im] FATAL: Cannot find the `claude` CLI executable.\n' +
       '  Tried: CTI_CLAUDE_CODE_EXECUTABLE env, /usr/local/bin/claude, /opt/homebrew/bin/claude, ~/.npm-global/bin/claude, ~/.local/bin/claude\n' +
       '  Fix: Install Claude Code CLI (https://docs.anthropic.com/en/docs/claude-code) or set CTI_CLAUDE_CODE_EXECUTABLE=/path/to/claude\n' +
-      '  Or: Set CTI_RUNTIME=codex to use Codex instead',
+      '  Or: Set CTI_RUNTIME=gemini to use Gemini instead'
     );
     process.exit(1);
   }
@@ -85,9 +92,74 @@ function writeStatus(info: StatusInfo): void {
   fs.renameSync(tmp, STATUS_FILE);
 }
 
+function readPidFile(): number | null {
+  try {
+    const raw = fs.readFileSync(PID_FILE, 'utf-8').trim();
+    if (!raw) return null;
+    const pid = Number(raw);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function acquireSingletonPidFileOrExit(): void {
+  fs.mkdirSync(RUNTIME_DIR, { recursive: true });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = fs.openSync(PID_FILE, 'wx');
+      fs.writeFileSync(fd, String(process.pid), 'utf-8');
+      fs.closeSync(fd);
+      return;
+    } catch (err) {
+      const error = err as NodeJS.ErrnoException;
+      if (error?.code !== 'EEXIST') throw err;
+
+      const existingPid = readPidFile();
+      if (existingPid && existingPid !== process.pid && isProcessAlive(existingPid)) {
+        console.error(
+          `[claude-to-im] Another bridge instance is already running (PID: ${existingPid}). ` +
+          'Exiting to avoid Telegram getUpdates 409 conflicts.'
+        );
+        process.exit(1);
+      }
+
+      try {
+        fs.unlinkSync(PID_FILE);
+      } catch {
+        // Another process may have already removed or replaced it.
+      }
+    }
+  }
+
+  console.error('[claude-to-im] Failed to acquire singleton bridge lock.');
+  process.exit(1);
+}
+
+function releaseSingletonPidFile(): void {
+  const currentOwner = readPidFile();
+  if (currentOwner !== process.pid) return;
+  try {
+    fs.unlinkSync(PID_FILE);
+  } catch {
+    // File may already be gone.
+  }
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
   setupLogger();
+  acquireSingletonPidFileOrExit();
 
   const runId = crypto.randomUUID();
   console.log(`[claude-to-im] Starting bridge (run_id: ${runId})`);
@@ -109,9 +181,6 @@ async function main(): Promise<void> {
     permissions: gateway,
     lifecycle: {
       onBridgeStart: () => {
-        // Write authoritative PID from the actual process (not shell $!)
-        fs.mkdirSync(RUNTIME_DIR, { recursive: true });
-        fs.writeFileSync(PID_FILE, String(process.pid), 'utf-8');
         writeStatus({
           running: true,
           pid: process.pid,
@@ -122,6 +191,7 @@ async function main(): Promise<void> {
         console.log(`[claude-to-im] Bridge started (PID: ${process.pid}, channels: ${config.enabledChannels.join(', ')})`);
       },
       onBridgeStop: () => {
+        releaseSingletonPidFile();
         writeStatus({ running: false });
         console.log('[claude-to-im] Bridge stopped');
       },
@@ -161,6 +231,7 @@ async function main(): Promise<void> {
     console.log(`[claude-to-im] beforeExit (code: ${code})`);
   });
   process.on('exit', (code) => {
+    releaseSingletonPidFile();
     console.log(`[claude-to-im] exit (code: ${code})`);
   });
 
