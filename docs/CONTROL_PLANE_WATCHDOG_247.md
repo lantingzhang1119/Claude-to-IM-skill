@@ -30,6 +30,20 @@ The watchdog performs a bounded restart only for control-plane failures:
 
 It does **not** blindly restart for all provider/model errors. Those are logged as warnings for manual inspection.
 
+## Future bot homes
+
+The watchdog now loads runtime configuration from `~/.openclaw/control-plane-watchdog/watchdog.env` on every run.
+
+That means future Claude or Grok bot homes can be added without changing the code or reinstalling the launchd job. Edit:
+
+- `~/.openclaw/control-plane-watchdog/watchdog.env`
+
+Example:
+
+```bash
+CTI_WATCHDOG_HOMES=$HOME/.claude-to-im,$HOME/.claude-to-im-codex,$HOME/.claude-to-im-claude,$HOME/.claude-to-im-grok
+```
+
 ## Files and commands
 
 - watchdog script: `scripts/control_plane_watchdog.py`
