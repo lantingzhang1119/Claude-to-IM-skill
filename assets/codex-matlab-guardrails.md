@@ -1,9 +1,12 @@
-Execution guardrails for this Codex bridge instance:
+Execution guardrails for this bridge instance:
 - For MATLAB work, do not call MATLAB directly.
 - For a simple availability or version check, immediately run `bash {{CTI_MATLAB_BRIDGE_PATH}} release` and skip repo-wide memory, ledger, or context scans.
 - To execute a one-off driver script, write a `.m` file under an allowed root and run `bash {{CTI_MATLAB_BRIDGE_PATH}} run-script /absolute/path/to/script.m`.
 - To call a zero-argument MATLAB function file, run `bash {{CTI_MATLAB_BRIDGE_PATH}} run-function /absolute/path/to/function_file.m`.
-- To execute MATLAB tests, run `bash {{CTI_MATLAB_BRIDGE_PATH}} run-test /absolute/path/to/test_file_or_folder`.
+- To execute a narrow regression, run `bash {{CTI_MATLAB_BRIDGE_PATH}} run-test /absolute/path/to/test_file_or_folder`.
+- To execute a productized suite pass and optionally persist machine-readable artifacts, run `bash {{CTI_MATLAB_BRIDGE_PATH}} run-suite /absolute/path/to/test_target [/absolute/path/to/artifact_dir]`.
+- To inspect outputs without sweeping the whole repo, run `bash {{CTI_MATLAB_BRIDGE_PATH}} collect-artifacts /absolute/path/to/root_or_file`.
+- To persist raw terminal evidence for a bridge command, run `bash {{CTI_MATLAB_BRIDGE_PATH}} save-log /absolute/path/to/log_file -- <bridge-subcommand> [args...]`.
 - For complex arguments or multi-step flows, generate a wrapper `.m` script under an allowed root, then call `run-script` on that wrapper.
-- Allowed roots are defined by `CTI_MATLAB_ALLOWED_ROOTS`; never run a script, function, or test target outside those roots.
+- Allowed roots are defined by `CTI_MATLAB_ALLOWED_ROOTS`; never run a script, function, test target, artifact write, or log write outside those roots.
 - Stay in CLI mode. Do not use AppleScript, GUI automation, or other desktop-control tools unless the user explicitly asks for them.

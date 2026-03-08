@@ -117,6 +117,16 @@ if [ "$CTI_RUNTIME" = "codex" ] || [ "$CTI_RUNTIME" = "auto" ]; then
   fi
 fi
 
+# --- Gemini checks (gemini mode) ---
+if [ "$CTI_RUNTIME" = "gemini" ]; then
+  if command -v gemini &>/dev/null; then
+    GEMINI_VER=$(gemini --version 2>/dev/null || echo "unknown")
+    check "Gemini CLI available (${GEMINI_VER})" 0
+  else
+    check "Gemini CLI available (not found in PATH)" 1
+  fi
+fi
+
 # --- dist/daemon.mjs freshness ---
 DAEMON_MJS="$SKILL_DIR/dist/daemon.mjs"
 if [ -f "$DAEMON_MJS" ]; then
@@ -152,6 +162,24 @@ get_config() { grep "^$1=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d= -f2- |
 
 if [ -f "$CONFIG_FILE" ]; then
   CTI_CHANNELS=$(get_config CTI_ENABLED_CHANNELS)
+
+  if [ "$CTI_RUNTIME" = "gemini" ]; then
+    GEMINI_MODEL=$(get_config CTI_DEFAULT_MODEL)
+    if [ -n "$GEMINI_MODEL" ]; then
+      check "Gemini default model configured (${GEMINI_MODEL})" 0
+    else
+      check "Gemini default model configured (set CTI_DEFAULT_MODEL to a non-interactive model)" 1
+    fi
+  fi
+
+  MATLAB_BRIDGE=$(get_config CTI_MATLAB_BRIDGE_PATH)
+  if [ -n "$MATLAB_BRIDGE" ]; then
+    if [ -x "$MATLAB_BRIDGE" ]; then
+      check "MATLAB bridge is executable (${MATLAB_BRIDGE})" 0
+    else
+      check "MATLAB bridge is executable (${MATLAB_BRIDGE})" 1
+    fi
+  fi
 
   # --- Telegram ---
   if echo "$CTI_CHANNELS" | grep -q telegram; then
