@@ -9,24 +9,61 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-REPO_ROOT = Path(os.environ.get('CTI_BRIDGE_REPO', Path(__file__).resolve().parent.parent))
-MONITOR_ROOT = Path(os.environ.get('CTI_WATCHDOG_ROOT', Path.home() / '.openclaw' / 'control-plane-watchdog'))
-WINDOW_SECONDS = int(os.environ.get('CTI_WATCHDOG_RECENT_WINDOW_SEC', '900'))
-RESTART_COOLDOWN_SECONDS = int(os.environ.get('CTI_WATCHDOG_RESTART_COOLDOWN_SEC', '900'))
-LOCK_STALE_SECONDS = int(os.environ.get('CTI_WATCHDOG_LOCK_STALE_SEC', '1800'))
+DEFAULT_REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_MONITOR_ROOT = Path.home() / '.openclaw' / 'control-plane-watchdog'
 DEFAULT_HOMES = [Path.home() / '.claude-to-im', Path.home() / '.claude-to-im-codex']
-HOMES = [Path(p) for p in os.environ.get('CTI_WATCHDOG_HOMES', '').split(',') if p.strip()] or DEFAULT_HOMES
-DAEMON_SH = REPO_ROOT / 'scripts' / 'daemon.sh'
-STATE_PATH = MONITOR_ROOT / 'state.json'
-LATEST_PATH = MONITOR_ROOT / 'latest.json'
-HISTORY_PATH = MONITOR_ROOT / 'history.ndjson'
-LOCK_DIR = MONITOR_ROOT / 'lock'
-TS_RE = re.compile(r'^\[(.*?)\]')
 SIGNAL_PATTERNS = {
     'conflict409': re.compile(r'\b409\b'),
     'dropped_group_message': re.compile(r'Dropped group message', re.I),
     'error': re.compile(r'\[ERROR\]|Fatal error|uncaughtException|unhandledRejection', re.I),
 }
+TS_RE = re.compile(r'^\[(.*?)\]')
+
+
+class RuntimeConfig:
+    def __init__(self) -> None:
+        monitor_root = Path(os.environ.get('CTI_WATCHDOG_ROOT', DEFAULT_MONITOR_ROOT))
+        self.repo_root = Path(os.environ.get('CTI_BRIDGE_REPO', DEFAULT_REPO_ROOT))
+        self.monitor_root = monitor_root
+        self.config_path = monitor_root / 'watchdog.env'
+        file_env = self._parse_env_file(self.config_path)
+        self.window_seconds = self._int_setting('CTI_WATCHDOG_RECENT_WINDOW_SEC', file_env, 900)
+        self.restart_cooldown_seconds = self._int_setting('CTI_WATCHDOG_RESTART_COOLDOWN_SEC', file_env, 900)
+        self.lock_stale_seconds = self._int_setting('CTI_WATCHDOG_LOCK_STALE_SEC', file_env, 1800)
+        homes_csv = os.environ.get('CTI_WATCHDOG_HOMES') or file_env.get('CTI_WATCHDOG_HOMES', '')
+        self.homes = [Path(item.strip()) for item in homes_csv.split(',') if item.strip()] or list(DEFAULT_HOMES)
+        self.daemon_sh = self.repo_root / 'scripts' / 'daemon.sh'
+        self.state_path = monitor_root / 'state.json'
+        self.latest_path = monitor_root / 'latest.json'
+        self.history_path = monitor_root / 'history.ndjson'
+        self.lock_dir = monitor_root / 'lock'
+        self.file_env = file_env
+
+    @staticmethod
+    def _parse_env_file(path: Path) -> dict[str, str]:
+        parsed: dict[str, str] = {}
+        if not path.exists():
+            return parsed
+        for raw in path.read_text(errors='replace').splitlines():
+            line = raw.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            parsed[key.strip()] = value.strip().strip('"\'')
+        return parsed
+
+    @staticmethod
+    def _int_setting(key: str, file_env: dict[str, str], default: int) -> int:
+        raw = os.environ.get(key) or file_env.get(key)
+        if raw is None or raw == '':
+            return default
+        try:
+            return int(raw)
+        except ValueError:
+            return default
+
+
+CFG = RuntimeConfig()
 
 
 def utc_now() -> datetime:
@@ -47,8 +84,8 @@ def parse_iso(value: str | None) -> datetime | None:
 
 
 def ensure_dirs() -> None:
-    MONITOR_ROOT.mkdir(parents=True, exist_ok=True)
-    (MONITOR_ROOT / 'logs').mkdir(parents=True, exist_ok=True)
+    CFG.monitor_root.mkdir(parents=True, exist_ok=True)
+    (CFG.monitor_root / 'logs').mkdir(parents=True, exist_ok=True)
 
 
 def load_json(path: Path, default):
@@ -65,24 +102,24 @@ def save_json(path: Path, payload) -> None:
 
 
 def append_history(payload) -> None:
-    with HISTORY_PATH.open('a', encoding='utf-8') as handle:
+    with CFG.history_path.open('a', encoding='utf-8') as handle:
         handle.write(json.dumps(payload, ensure_ascii=True) + '\n')
 
 
 def acquire_lock() -> None:
     ensure_dirs()
-    if LOCK_DIR.exists():
-        age = time.time() - LOCK_DIR.stat().st_mtime
-        if age > LOCK_STALE_SECONDS:
-            shutil.rmtree(LOCK_DIR, ignore_errors=True)
+    if CFG.lock_dir.exists():
+        age = time.time() - CFG.lock_dir.stat().st_mtime
+        if age > CFG.lock_stale_seconds:
+            shutil.rmtree(CFG.lock_dir, ignore_errors=True)
         else:
-            raise RuntimeError(f'watchdog lock already held: {LOCK_DIR}')
-    LOCK_DIR.mkdir(parents=True, exist_ok=False)
-    (LOCK_DIR / 'pid').write_text(str(os.getpid()))
+            raise RuntimeError(f'watchdog lock already held: {CFG.lock_dir}')
+    CFG.lock_dir.mkdir(parents=True, exist_ok=False)
+    (CFG.lock_dir / 'pid').write_text(str(os.getpid()))
 
 
 def release_lock() -> None:
-    shutil.rmtree(LOCK_DIR, ignore_errors=True)
+    shutil.rmtree(CFG.lock_dir, ignore_errors=True)
 
 
 def run(cmd: list[str], extra_env: dict[str, str] | None = None, timeout: int = 120) -> dict:
@@ -117,7 +154,7 @@ def read_runtime(home: Path) -> str:
 def find_matching_pids(home: Path) -> list[int]:
     proc = run(['ps', 'eww', '-axo', 'pid=,command='])
     matches: list[int] = []
-    needle = str(REPO_ROOT / 'dist' / 'daemon.mjs')
+    needle = str(CFG.repo_root / 'dist' / 'daemon.mjs')
     home_re = re.compile(rf'CTI_HOME={re.escape(str(home))}(?:\s|$)')
     for line in proc['stdout'].splitlines():
         if needle not in line or not home_re.search(line):
@@ -144,7 +181,7 @@ def scan_recent_signals(home: Path, started_at: datetime | None) -> dict:
     if not log_path.exists():
         return {'counts': counts, 'lines': recent_lines}
 
-    threshold = utc_now() - timedelta(seconds=WINDOW_SECONDS)
+    threshold = utc_now() - timedelta(seconds=CFG.window_seconds)
     if started_at and started_at > threshold:
         threshold = started_at
 
@@ -166,7 +203,7 @@ def scan_recent_signals(home: Path, started_at: datetime | None) -> dict:
 
 
 def read_state() -> dict:
-    payload = load_json(STATE_PATH, {'homes': {}})
+    payload = load_json(CFG.state_path, {'homes': {}})
     if not isinstance(payload, dict):
         return {'homes': {}}
     payload.setdefault('homes', {})
@@ -174,7 +211,7 @@ def read_state() -> dict:
 
 
 def save_state(state: dict) -> None:
-    save_json(STATE_PATH, state)
+    save_json(CFG.state_path, state)
 
 
 def can_restart(home: Path, state: dict) -> bool:
@@ -182,7 +219,7 @@ def can_restart(home: Path, state: dict) -> bool:
     last = parse_iso(entry.get('lastRestartAt'))
     if not last:
         return True
-    return (utc_now() - last).total_seconds() >= RESTART_COOLDOWN_SECONDS
+    return (utc_now() - last).total_seconds() >= CFG.restart_cooldown_seconds
 
 
 def mark_restart(home: Path, state: dict) -> None:
@@ -192,8 +229,8 @@ def mark_restart(home: Path, state: dict) -> None:
 
 def restart_home(home: Path, state: dict) -> dict:
     mark_restart(home, state)
-    stop_res = run(['bash', str(DAEMON_SH), 'stop'], {'CTI_HOME': str(home)})
-    start_res = run(['bash', str(DAEMON_SH), 'start'], {'CTI_HOME': str(home)}, timeout=180)
+    stop_res = run(['bash', str(CFG.daemon_sh), 'stop'], {'CTI_HOME': str(home)})
+    start_res = run(['bash', str(CFG.daemon_sh), 'start'], {'CTI_HOME': str(home)}, timeout=180)
     time.sleep(2)
     post_status = read_status(home)
     post_pids = find_matching_pids(home)
@@ -274,20 +311,22 @@ def main() -> int:
     exit_code = 0
     try:
         state = read_state()
-        homes = [inspect_home(home, state) for home in HOMES]
+        homes = [inspect_home(home, state) for home in CFG.homes]
         save_state(state)
 
         overall = {
             'checkedAt': iso_now(),
-            'repoRoot': str(REPO_ROOT),
-            'monitorRoot': str(MONITOR_ROOT),
-            'windowSeconds': WINDOW_SECONDS,
-            'restartCooldownSeconds': RESTART_COOLDOWN_SECONDS,
+            'repoRoot': str(CFG.repo_root),
+            'monitorRoot': str(CFG.monitor_root),
+            'configPath': str(CFG.config_path),
+            'configuredHomes': [str(home) for home in CFG.homes],
+            'windowSeconds': CFG.window_seconds,
+            'restartCooldownSeconds': CFG.restart_cooldown_seconds,
             'homes': homes,
             'overallHealthy': all(item['healthy'] for item in homes),
             'autoHealed': any(action['type'] == 'restart_home' for item in homes for action in item['actions']),
         }
-        save_json(LATEST_PATH, overall)
+        save_json(CFG.latest_path, overall)
         append_history(overall)
         print(json.dumps(overall, ensure_ascii=True, indent=2))
         if not overall['overallHealthy']:
@@ -303,11 +342,12 @@ if __name__ == '__main__':
     except RuntimeError as err:
         payload = {
             'checkedAt': iso_now(),
+            'configPath': str(CFG.config_path),
             'overallHealthy': False,
             'fatal': str(err),
         }
         ensure_dirs()
-        save_json(LATEST_PATH, payload)
+        save_json(CFG.latest_path, payload)
         append_history(payload)
         print(json.dumps(payload, ensure_ascii=True, indent=2))
         raise SystemExit(1)

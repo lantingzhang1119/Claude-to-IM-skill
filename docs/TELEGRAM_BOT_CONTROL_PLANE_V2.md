@@ -60,6 +60,12 @@ Therefore, V2 treats duplicate consumers as a first-class failure mode.
 4. run real Telegram group matrix
 5. record exact observed bot behavior
 
+## Pre-push Telegram gate
+
+V2 now includes a dedicated Telegram regression gate script at `scripts/telegram_regression_gate.sh`. It validates both the local Telegram receive path and the real Telegram send path before push, and writes an auditable report under `runtime/`.
+
+See `docs/TELEGRAM_REGRESSION_GATE.md` for usage and expectations.
+
 ## 24/7 watchdog
 
 V2 now includes a dedicated control-plane watchdog for macOS launchd. It monitors the Gemini and Codex runtime homes every 300 seconds, records health reports under `~/.openclaw/control-plane-watchdog`, and performs bounded self-healing only for control-plane failures such as missing daemons, duplicate consumers, stale `status.json`, and fresh Telegram `409 Conflict` incidents.
