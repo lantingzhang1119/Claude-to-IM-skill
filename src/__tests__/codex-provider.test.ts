@@ -375,6 +375,29 @@ describe('CodexProvider', () => {
     }
   });
 
+  it('passes per-bot disabled MCP server overrides into the SDK config', async () => {
+    const oldDisabled = process.env.CTI_CODEX_DISABLED_MCP_SERVERS;
+    process.env.CTI_CODEX_DISABLED_MCP_SERVERS = 'linear,notion,playwright';
+    try {
+      const { CodexProvider, getCodexConfigOverrides } = await import('../codex-provider.js');
+      const { PendingPermissions } = await import('../permission-gateway.js');
+
+      assert.deepEqual(getCodexConfigOverrides(), {
+        mcp_servers: {
+          linear: { enabled: false },
+          notion: { enabled: false },
+          playwright: { enabled: false },
+        },
+      });
+
+      void CodexProvider;
+      void PendingPermissions;
+    } finally {
+      if (oldDisabled === undefined) delete process.env.CTI_CODEX_DISABLED_MCP_SERVERS;
+      else process.env.CTI_CODEX_DISABLED_MCP_SERVERS = oldDisabled;
+    }
+  });
+
   it('prepends prompt preamble file and session instructions', async () => {
     const oldPreambleFile = process.env.CTI_CODEX_PROMPT_PREAMBLE_FILE;
     const oldBridgePath = process.env.CTI_MATLAB_BRIDGE_PATH;
