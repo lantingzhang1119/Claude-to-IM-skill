@@ -77,6 +77,17 @@ function getConfiguredAdditionalDirectories(): string[] | undefined {
   return dirs.length > 0 ? dirs : undefined;
 }
 
+export function getCodexConfigOverrides(): Record<string, unknown> | undefined {
+  const disabledMcpServers = parseListEnv('CTI_CODEX_DISABLED_MCP_SERVERS');
+  if (disabledMcpServers.length === 0) return undefined;
+
+  const mcpServers = Object.fromEntries(
+    disabledMcpServers.map((name) => [name, { enabled: false }])
+  );
+
+  return { mcp_servers: mcpServers };
+}
+
 function renderEnvTemplate(text: string): string {
   return text.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_match, name) => process.env[name] || '');
 }
@@ -151,10 +162,13 @@ export class CodexProvider implements LLMProvider {
       || undefined;
     const baseUrl = process.env.CTI_CODEX_BASE_URL || undefined;
 
+    const configOverrides = getCodexConfigOverrides();
+
     const CodexClass = this.sdk.Codex;
     this.codex = new CodexClass({
       ...(apiKey ? { apiKey } : {}),
       ...(baseUrl ? { baseUrl } : {}),
+      ...(configOverrides ? { config: configOverrides } : {}),
     });
 
     return { sdk: this.sdk, codex: this.codex };
