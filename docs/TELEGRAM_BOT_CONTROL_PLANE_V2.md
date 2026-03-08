@@ -60,6 +60,12 @@ Therefore, V2 treats duplicate consumers as a first-class failure mode.
 4. run real Telegram group matrix
 5. record exact observed bot behavior
 
+## 24/7 watchdog
+
+V2 now includes a dedicated control-plane watchdog for macOS launchd. It monitors the Gemini and Codex runtime homes every 300 seconds, records health reports under `~/.openclaw/control-plane-watchdog`, and performs bounded self-healing only for control-plane failures such as missing daemons, duplicate consumers, stale `status.json`, and fresh Telegram `409 Conflict` incidents.
+
+See `docs/CONTROL_PLANE_WATCHDOG_247.md` for installation, status, and rollback.
+
 ## Ready for next expansion
 
 With V2 in place, new bots should be added by cloning the runtime-home pattern, not by changing shared routing semantics:
