@@ -225,7 +225,7 @@ fi
 
 # --- Recent errors in log ---
 if [ -f "$LOG_FILE" ]; then
-  ERROR_COUNT=$(tail -50 "$LOG_FILE" | grep -ciE 'ERROR|Fatal' || true)
+  ERROR_COUNT=$(tail -50 "$LOG_FILE" | grep -cE '\[ERROR\]|Fatal error|uncaughtException|unhandledRejection' || true)
   if [ "$ERROR_COUNT" -eq 0 ]; then
     check "No recent errors in log (last 50 lines)" 0
   else
