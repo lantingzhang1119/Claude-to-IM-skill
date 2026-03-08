@@ -23,6 +23,34 @@ fi
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST_FILE="$PLIST_DIR/$LAUNCHD_LABEL.plist"
 
+list_matching_bridge_pids() {
+  local daemon_path="$SKILL_DIR/dist/daemon.mjs"
+  local pid
+  while read -r pid; do
+    [ -n "$pid" ] || continue
+    ps eww -p "$pid" -o command= 2>/dev/null | grep -F "CTI_HOME=$CTI_HOME" >/dev/null || continue
+    printf '%s\n' "$pid"
+  done < <(pgrep -f "$daemon_path" 2>/dev/null || true)
+}
+
+kill_matching_bridge_pids() {
+  local pids pid
+  pids="$(list_matching_bridge_pids | tr '\n' ' ')"
+  [ -n "$pids" ] || return 0
+
+  for pid in $pids; do
+    kill "$pid" 2>/dev/null || true
+  done
+
+  sleep 1
+
+  for pid in $pids; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done
+}
+
 # ── launchd helpers ──
 
 # Collect env vars that should be forwarded into the plist.
@@ -128,6 +156,7 @@ PLIST
 
 supervisor_start() {
   launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || true
+  kill_matching_bridge_pids
   generate_plist
   launchctl bootstrap "gui/$(id -u)" "$PLIST_FILE"
   launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"
@@ -135,6 +164,7 @@ supervisor_start() {
 
 supervisor_stop() {
   launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || true
+  kill_matching_bridge_pids
   rm -f "$PID_FILE"
 }
 
