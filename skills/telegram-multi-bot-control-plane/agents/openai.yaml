@@ -1,0 +1,4 @@
+interface:
+  display_name: "Telegram Multi-Bot Control Plane"
+  short_description: "Telegram multi-bot orchestration and recovery"
+  default_prompt: "Use $telegram-multi-bot-control-plane to set up, debug, or harden a Telegram multi-bot LLM control plane."

@@ -62,6 +62,44 @@ function sliceEntityText(text: string, entity: TelegramEntity): string {
   return Array.from(text).slice(offset, offset + length).join('');
 }
 
+export function extractMentionedBotUsernames(
+  text: string,
+  entities: TelegramEntity[] | undefined,
+): string[] {
+  const mentions = new Set<string>();
+
+  for (const entity of entities || []) {
+    if (entity.type !== 'mention' && entity.type !== 'bot_command') continue;
+    const fragment = sliceEntityText(text, entity).trim().toLowerCase();
+    const match = fragment.match(/^@([a-z0-9_]{3,})$/i);
+    if (match && match[1].endsWith('_bot')) {
+      mentions.add(match[1]);
+    }
+  }
+
+  for (const match of text.toLowerCase().matchAll(/@([a-z0-9_]{3,})/g)) {
+    const username = match[1];
+    if (username.endsWith('_bot')) {
+      mentions.add(username);
+    }
+  }
+
+  return [...mentions];
+}
+
+export function mentionsOnlyOtherBots(
+  text: string,
+  entities: TelegramEntity[] | undefined,
+  identity: TelegramBotIdentity,
+): boolean {
+  const mentionedBots = extractMentionedBotUsernames(text, entities);
+  if (mentionedBots.length === 0) return false;
+
+  const username = identity.username?.replace(/^@/, '').toLowerCase();
+  if (!username) return true;
+  return !mentionedBots.includes(username);
+}
+
 export function groupMessageMentionsBot(
   text: string,
   entities: TelegramEntity[] | undefined,
@@ -118,10 +156,16 @@ export function shouldAcceptTelegramInbound(
   const rawMessage = getMessageFromUpdate(msg.raw);
   if (!isGroupLikeMessage(rawMessage)) return true;
 
-  if (isReplyToThisBot(rawMessage, identity)) return true;
-
   const text = rawMessage?.text || rawMessage?.caption || msg.text || '';
   const entities = rawMessage?.entities || rawMessage?.caption_entities;
+
+  // If the user explicitly @mentions other bots but not this bot, stay silent
+  // even when the message is a reply to this bot. This prevents reply-chain
+  // bleed-through in multi-bot groups.
+  if (mentionsOnlyOtherBots(text, entities, identity)) return false;
+
+  if (isReplyToThisBot(rawMessage, identity)) return true;
+
   if (groupMessageMentionsBot(text, entities, identity)) return true;
 
   return false;

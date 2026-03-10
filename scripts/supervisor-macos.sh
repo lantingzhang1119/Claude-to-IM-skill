@@ -3,7 +3,22 @@
 # Sourced by daemon.sh; expects CTI_HOME, SKILL_DIR, PID_FILE, STATUS_FILE, LOG_FILE.
 
 DEFAULT_LAUNCHD_LABEL="com.claude-to-im.bridge"
-DEFAULT_CTI_HOME="$HOME/.claude-to-im"
+
+resolve_user_home() {
+  local target_user="${SUDO_USER:-${USER:-$(id -un)}}"
+  local home_dir
+
+  home_dir=$(dscl . -read "/Users/$target_user" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true)
+  if [ -n "$home_dir" ]; then
+    printf '%s' "$home_dir"
+    return 0
+  fi
+
+  eval printf '%s' "~$target_user"
+}
+
+REAL_HOME="$(resolve_user_home)"
+DEFAULT_CTI_HOME="$REAL_HOME/.claude-to-im"
 
 slugify_label_suffix() {
   local raw="$1"
@@ -20,7 +35,7 @@ else
   LAUNCHD_LABEL="$DEFAULT_LAUNCHD_LABEL.$CTI_INSTANCE_SUFFIX"
 fi
 
-PLIST_DIR="$HOME/Library/LaunchAgents"
+PLIST_DIR="$REAL_HOME/Library/LaunchAgents"
 PLIST_FILE="$PLIST_DIR/$LAUNCHD_LABEL.plist"
 
 list_matching_bridge_pids() {
@@ -59,9 +74,13 @@ build_env_dict() {
   local indent="            "
   local dict=""
 
-  # Always forward basics
+  # Always forward basics. Keep provider auth/config tied to the real login home,
+  # not CTI_HOME, so Codex/Gemini can reuse the user's existing credentials.
   for var in HOME PATH USER SHELL LANG TMPDIR; do
     local val="${!var:-}"
+    if [ "$var" = "HOME" ]; then
+      val="$REAL_HOME"
+    fi
     [ -z "$val" ] && continue
     dict+="${indent}<key>${var}</key>\n${indent}<string>${val}</string>\n"
   done
