@@ -1,0 +1,3 @@
+interface:
+  display_name: "Discord Mention Gate Alert Regression"
+  short_description: "Run rollback-safe alert regression for Discord mention-gate failures"

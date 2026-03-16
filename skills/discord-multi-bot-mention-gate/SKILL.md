@@ -54,5 +54,6 @@ These keys must be mapped through `src/config.ts` into:
 ## References
 
 - `references/checklist.md` for the short execution list
+- `../discord-mention-gate-alert-regression/SKILL.md` when mention gating is fixed but the Telegram alert path still needs end-to-end proof
 - `../telegram-multi-bot-control-plane/references/discord-mention-gating.md` for the detailed runbook
 - `../telegram-multi-bot-control-plane/references/release-checklist.md` for local plus real-IM regression gates
