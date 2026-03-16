@@ -29,6 +29,18 @@ Safer local rehearsal without sending Telegram messages:
 python3 scripts/run_discord_mention_gate_alert_regression.py
 ```
 
+Install a periodic dry-run launchd check:
+
+```bash
+bash scripts/install_discord_mention_gate_alert_regression_launchagent.sh
+```
+
+Enable scheduled real alerts only when you explicitly want that behavior:
+
+```bash
+bash scripts/install_discord_mention_gate_alert_regression_launchagent.sh --send-real-alerts
+```
+
 ## Outputs
 
 - latest: `~/.openclaw/workspace/runtime/discord_mention_gate_alert_regression_latest.json`
@@ -41,6 +53,7 @@ python3 scripts/run_discord_mention_gate_alert_regression.py
 3. Use `--send-real-alerts` after control-plane, mention-gate, or routing changes.
 4. Verify the Telegram failure alert and the paired recovery alert arrived.
 5. Read the latest JSON artifact and confirm `success=true` and `restoredState=true`.
+6. If you want continuous guardrails, install the launchd agent and confirm it stays in dry-run mode by default.
 
 ## Guardrails
 

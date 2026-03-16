@@ -8,6 +8,26 @@ Run the helper from `/Users/zhichaorong/.openclaw/skills-sandbox/claude-to-im-sk
 python3 scripts/run_discord_mention_gate_alert_regression.py --send-real-alerts
 ```
 
+## Periodic dry-run installation
+
+Install the launchd agent with the default dry-run behavior:
+
+```bash
+bash scripts/install_discord_mention_gate_alert_regression_launchagent.sh
+```
+
+Default cadence is every 6 hours. Change it when needed:
+
+```bash
+bash scripts/install_discord_mention_gate_alert_regression_launchagent.sh --interval-sec 14400
+```
+
+Only opt into scheduled real alerts if you intentionally want the job to send Telegram messages:
+
+```bash
+bash scripts/install_discord_mention_gate_alert_regression_launchagent.sh --send-real-alerts
+```
+
 ## What the helper does
 
 1. Loads `runtime_health_runner.py` from the OpenClaw workspace.
@@ -36,6 +56,8 @@ python3 scripts/run_discord_mention_gate_alert_regression.py --send-real-alerts
 
 - `--send-real-alerts`
   - send the two Telegram messages for real
+- `--interval-sec <seconds>` on the install script
+  - control the launchd cadence; default is 21600 seconds
 - `--target <chat_id>`
   - override the system route target for isolated testing
 - `--channel <name>` and `--account <id>`
