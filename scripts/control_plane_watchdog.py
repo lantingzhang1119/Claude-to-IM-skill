@@ -9,6 +9,10 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from audit_discord_mention_gate import inspect_home as inspect_discord_mention_gate_home
+from audit_discord_mention_gate import parse_launchagents as parse_discord_launchagents
+from ensure_discord_mention_gate import update_cti_home as repair_discord_mention_gate
+
 DEFAULT_REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MONITOR_ROOT = Path.home() / '.openclaw' / 'control-plane-watchdog'
 DEFAULT_HOMES = [Path.home() / '.claude-to-im', Path.home() / '.claude-to-im-codex']
@@ -64,6 +68,7 @@ class RuntimeConfig:
 
 
 CFG = RuntimeConfig()
+DISCORD_LAUNCHAGENTS = parse_discord_launchagents()
 
 
 def utc_now() -> datetime:
@@ -248,6 +253,7 @@ def inspect_home(home: Path, state: dict) -> dict:
     started_at = parse_iso(status.get('startedAt'))
     pids = find_matching_pids(home)
     recent = scan_recent_signals(home, started_at)
+    mention_gate = inspect_discord_mention_gate_home(home, DISCORD_LAUNCHAGENTS)
 
     issues: list[str] = []
     warnings: list[str] = []
@@ -276,28 +282,52 @@ def inspect_home(home: Path, state: dict) -> dict:
     if recent['counts']['error'] > 0:
         warnings.append('recent_error_lines_detected')
 
+    mention_gate_needs_repair = bool(mention_gate.get('has_discord') and not mention_gate.get('ok'))
+    if mention_gate_needs_repair:
+        issues.append('discord_mention_gate_misconfigured')
+        restart_reasons.append('discord_mention_gate_misconfigured')
+
     healed = False
-    if restart_reasons:
+    if mention_gate_needs_repair:
+        if can_restart(home, state):
+            mark_restart(home, state)
+            repair = repair_discord_mention_gate(home, CFG.daemon_sh, restart=True)
+            action = {
+                'type': 'repair_discord_mention_gate',
+                'reasons': sorted(set(restart_reasons)),
+                'result': repair.__dict__,
+            }
+            actions.append(action)
+            restart_cmds = (repair.restart or {}).get('commands', [])
+            status_cmd = next((cmd for cmd in restart_cmds if cmd.get('action') == 'status'), None)
+            healed = bool(status_cmd and status_cmd.get('returncode') == 0)
+        else:
+            actions.append({'type': 'repair_discord_mention_gate_skipped_cooldown', 'reasons': sorted(set(restart_reasons))})
+    elif restart_reasons:
         if can_restart(home, state):
             action = restart_home(home, state)
             action['type'] = 'restart_home'
-            action['reasons'] = restart_reasons
+            action['reasons'] = sorted(set(restart_reasons))
             actions.append(action)
             healed = bool(action['start']['code'] == 0 and action['postStatus'].get('running') is True)
         else:
-            actions.append({'type': 'restart_skipped_cooldown', 'reasons': restart_reasons})
+            actions.append({'type': 'restart_skipped_cooldown', 'reasons': sorted(set(restart_reasons))})
 
     final_status = read_status(home)
     final_pids = find_matching_pids(home)
+    final_mention_gate = inspect_discord_mention_gate_home(home, DISCORD_LAUNCHAGENTS)
     healthy = bool(final_status.get('running') is True and len(final_pids) == 1)
     if recent['counts']['conflict409'] > 0:
         healthy = False if not healed else healthy
+    if final_mention_gate.get('has_discord') and not final_mention_gate.get('ok'):
+        healthy = False
 
     return {
         'home': str(home),
         'runtime': runtime,
         'pids': final_pids,
         'status': final_status,
+        'mentionGate': final_mention_gate,
         'recentSignals': recent,
         'issues': sorted(set(issues)),
         'warnings': sorted(set(warnings)),

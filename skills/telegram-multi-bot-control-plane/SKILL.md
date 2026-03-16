@@ -105,6 +105,7 @@ Load only what is needed:
 
 - `references/failure-signatures.md` for failure triage and root-cause patterns
 - `references/discord-mention-gating.md` for shared-channel Discord routing and mention-only rollouts
+- `references/openclaw-gateway-discord-template.md` for future Finance/Audit-style gateway Discord accounts
 - `references/release-checklist.md` for local + Telegram regression gates
 - `references/commercial-packaging.md` for pricing, deliverables, and sales framing
 - `references/provider-expansion.md` for onboarding Claude, Grok, or future bots
