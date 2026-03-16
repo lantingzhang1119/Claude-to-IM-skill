@@ -94,11 +94,15 @@ describe('configToSettings', () => {
       discordAllowedUsers: ['u1'],
       discordAllowedChannels: ['c1', 'c2'],
       discordAllowedGuilds: ['g1'],
+      discordRequireMention: true,
+      discordGroupPolicy: 'mention_only',
     });
     assert.equal(m.get('bridge_discord_bot_token'), 'discord-token');
     assert.equal(m.get('bridge_discord_allowed_users'), 'u1');
     assert.equal(m.get('bridge_discord_allowed_channels'), 'c1,c2');
     assert.equal(m.get('bridge_discord_allowed_guilds'), 'g1');
+    assert.equal(m.get('bridge_discord_require_mention'), 'true');
+    assert.equal(m.get('bridge_discord_group_policy'), 'mention_only');
   });
 
   it('maps feishu config', () => {

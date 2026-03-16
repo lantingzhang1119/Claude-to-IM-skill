@@ -19,6 +19,27 @@ Fix shape:
 - Reject group messages that explicitly mention other bots but not this bot, even if the message is a reply to this bot.
 - Prove the fix with both reply-chain and non-reply group cases.
 
+## Discord shared-channel cross-talk
+
+Symptoms:
+
+- `@CodexBot` causes Gemini to reply too.
+- `@GeminiBot` causes Codex to reply too.
+- A no-mention message in a shared Discord channel wakes every bot.
+
+Check:
+
+- `src/config.ts`
+- `scripts/ensure_discord_mention_gate.py`
+- each affected bot home's `config.env`
+- each affected bot home's `logs/bridge.log`
+
+Fix shape:
+
+- Map `CTI_DISCORD_REQUIRE_MENTION` and `CTI_DISCORD_GROUP_POLICY` through `configToSettings`.
+- Set `CTI_DISCORD_REQUIRE_MENTION=true` and `CTI_DISCORD_GROUP_POLICY=mention_only` on every Discord-enabled bot home.
+- Restart only the affected bridges and prove that explicit mentions route to one bot only.
+
 ## Gemini stale resume session
 
 Symptoms:

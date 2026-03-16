@@ -1,13 +1,13 @@
 ---
 name: telegram-multi-bot-control-plane
-description: Build, harden, debug, package, or extend a Telegram-based multi-bot LLM control plane where different bots map to different runtimes or providers such as Codex, Gemini, Claude, or Grok. Use when setting up mention-only group orchestration, isolating per-bot HOME and CTI_HOME state, fixing reply-chain bleed-through, repairing stale resume-session failures, recovering provider auth or MCP config issues, restarting daemons safely, auditing bindings and sessions, packaging the system into a sellable service offering, or adding new provider bots with a repeatable regression workflow.
+description: Build, harden, debug, package, or extend a Telegram-based multi-bot LLM control plane where different bots map to different runtimes or providers such as Codex, Gemini, Claude, or Grok. Use when setting up mention-only group orchestration, fixing Telegram or Discord cross-reply bleed-through, isolating per-bot HOME and CTI_HOME state, repairing stale resume-session failures, recovering provider auth or MCP config issues, restarting daemons safely, auditing bindings and sessions, packaging the system into a sellable service offering, or adding new provider bots with a repeatable regression workflow.
 ---
 
 # Telegram Multi-Bot Control Plane
 
 ## Overview
 
-Treat each bot as its own runtime cell with isolated bridge state and shared user-level provider auth. Prefer the smallest reversible fix, prove it locally, then prove it in a real Telegram group before declaring the control plane healthy.
+Treat each bot as its own runtime cell with isolated bridge state and shared user-level provider auth. Prefer the smallest reversible fix, prove it locally, then prove it in a real Telegram or Discord room before declaring the control plane healthy.
 
 ## Core Model
 
@@ -15,9 +15,9 @@ Keep these boundaries explicit for every bot:
 
 - `CTI_HOME`: bridge-local state such as `config.env`, bindings, audit, logs, runtime status
 - `HOME`: real login home for provider auth and user-level config unless you are intentionally testing a clean-room runtime
-- Telegram identity: bot token, username, user id, group policy
+- Chat identity: Telegram bot username, Discord bot user id, allowed users/channels/guilds, and mention policy
 - Runtime/provider: `codex`, `gemini`, `claude`, or future providers
-- Acceptance path: local smoke -> daemon restart -> Telegram regression
+- Acceptance path: local smoke -> daemon restart -> real IM regression on the affected channel
 
 ## Workflow
 
@@ -45,6 +45,7 @@ Confirm:
 Use `references/failure-signatures.md` to map the symptom into one of these buckets:
 
 - mention-routing or reply-chain bleed-through
+- Discord shared-channel cross-talk or missing mention gating
 - stale Gemini resume session or startup stall
 - Codex config or MCP parse failure
 - daemon environment isolation mistake
@@ -60,6 +61,7 @@ Follow these guardrails:
 - Keep user auth and provider config on the real login `HOME` unless deliberately isolating credentials.
 - Backup runtime JSON or env files before rewriting them.
 - Fix Telegram acceptance logic before changing model or prompt settings.
+- For Discord guilds, prefer `require_mention=true` with `mention_only` group policy before touching provider logic.
 - Clear or realign stale `sdkSessionId` state instead of hiding resume bugs behind formatting.
 
 ### 4. Validate in layers
@@ -70,7 +72,7 @@ Run validation in this order:
 2. `npm run build`
 3. provider-local smoke checks
 4. daemon restart for affected bots only
-5. real Telegram regression matrix
+5. real Telegram or Discord regression matrix
 
 Use `references/release-checklist.md` for the exact prompts and expected results.
 
@@ -102,6 +104,7 @@ When adding `Claude bot`, `Grok bot`, or another runtime, read `references/provi
 Load only what is needed:
 
 - `references/failure-signatures.md` for failure triage and root-cause patterns
+- `references/discord-mention-gating.md` for shared-channel Discord routing and mention-only rollouts
 - `references/release-checklist.md` for local + Telegram regression gates
 - `references/commercial-packaging.md` for pricing, deliverables, and sales framing
 - `references/provider-expansion.md` for onboarding Claude, Grok, or future bots

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Discord Mention Gate"
+  short_description: "Harden multi-bot Discord mention-only routing"
+  default_prompt: "Use $discord-multi-bot-mention-gate to stop wrong-bot replies in a shared Discord channel."

@@ -22,6 +22,8 @@ export interface Config {
   discordAllowedUsers?: string[];
   discordAllowedChannels?: string[];
   discordAllowedGuilds?: string[];
+  discordRequireMention?: boolean;
+  discordGroupPolicy?: 'open' | 'disabled' | 'mention_only';
   // Auto-approve all tool permission requests without user confirmation
   autoApprove?: boolean;
 }
@@ -99,6 +101,10 @@ export function loadConfig(): Config {
       env.get("CTI_DISCORD_ALLOWED_CHANNELS")
     ),
     discordAllowedGuilds: splitCsv(env.get("CTI_DISCORD_ALLOWED_GUILDS")),
+    discordRequireMention: env.get("CTI_DISCORD_REQUIRE_MENTION") === "true",
+    discordGroupPolicy: (
+      env.get("CTI_DISCORD_GROUP_POLICY") || undefined
+    ) as Config["discordGroupPolicy"],
     autoApprove: env.get("CTI_AUTO_APPROVE") === "true",
   };
 }
@@ -143,6 +149,16 @@ export function saveConfig(config: Config): void {
   out += formatEnvLine(
     "CTI_DISCORD_ALLOWED_GUILDS",
     config.discordAllowedGuilds?.join(",")
+  );
+  out += formatEnvLine(
+    "CTI_DISCORD_REQUIRE_MENTION",
+    config.discordRequireMention === undefined
+      ? undefined
+      : String(config.discordRequireMention)
+  );
+  out += formatEnvLine(
+    "CTI_DISCORD_GROUP_POLICY",
+    config.discordGroupPolicy
   );
 
   fs.mkdirSync(CTI_HOME, { recursive: true });
@@ -194,6 +210,13 @@ export function configToSettings(config: Config): Map<string, string> {
       "bridge_discord_allowed_guilds",
       config.discordAllowedGuilds.join(",")
     );
+  if (config.discordRequireMention !== undefined)
+    m.set(
+      "bridge_discord_require_mention",
+      config.discordRequireMention ? "true" : "false"
+    );
+  if (config.discordGroupPolicy)
+    m.set("bridge_discord_group_policy", config.discordGroupPolicy);
 
   // ── Feishu ──
   // Upstream keys: bridge_feishu_app_id, bridge_feishu_app_secret,

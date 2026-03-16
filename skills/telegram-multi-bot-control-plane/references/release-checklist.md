@@ -9,6 +9,12 @@ npm test
 npm run build
 ```
 
+For Discord mention-only rollouts, inspect or apply the canonical gate before restart:
+
+```bash
+python3 scripts/ensure_discord_mention_gate.py --cti-home "$BOT_HOME" --json
+```
+
 For Codex smoke, prefer the real login home:
 
 ```bash
@@ -54,6 +60,20 @@ Expected result:
 - only the addressed bot responds
 - no Gemini resume-session error leaks to Telegram
 - no Codex `invalid transport` or MCP config parse error leaks to Telegram
+
+## Real Discord regression matrix
+
+Run these in the shared Discord channel and capture the raw results:
+
+1. `@CodexBot 只回复 1`
+2. `@GeminiBot 只回复 2`
+3. a plain message with no bot mention
+
+Expected result:
+
+- only the explicitly mentioned bot responds
+- the non-addressed bot stays silent
+- the no-mention message stays silent for every bot in the channel
 
 ## Commit scope
 
