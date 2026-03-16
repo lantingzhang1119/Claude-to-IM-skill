@@ -19,27 +19,44 @@ If the env file has the keys but the running daemon still behaves like an open c
 ## Canonical files
 
 - `src/config.ts`
+- `scripts/audit_discord_mention_gate.py`
 - `scripts/ensure_discord_mention_gate.py`
 - `<CTI_HOME>/config.env`
 - `<CTI_HOME>/logs/bridge.log`
 - `<CTI_HOME>/runtime/status.json`
 
+## Discovery-first audit
+
+Before changing anything, audit the currently discovered bridge homes:
+
+```bash
+python3 scripts/audit_discord_mention_gate.py --json
+```
+
+The audit scans both:
+
+- bot homes on disk such as `~/.claude-to-im*`
+- launchd bridge plists that carry `CTI_HOME`
+
+This is the preferred way to catch newly added Discord bot runtimes such as future Finance or Audit bridges.
+
 ## Safe apply workflow
 
 1. Inspect every affected bot home and confirm Discord is actually enabled.
-2. Run the helper:
+2. Run the audit and confirm which homes need changes.
+3. Run the helper:
 
 ```bash
 python3 scripts/ensure_discord_mention_gate.py --cti-home "$BOT_HOME" --json
 ```
 
-3. If the helper reports changes, restart only the affected bridge:
+4. If the helper reports changes, restart only the affected bridge:
 
 ```bash
 python3 scripts/ensure_discord_mention_gate.py --cti-home "$BOT_HOME" --restart --json
 ```
 
-4. Confirm the daemon came back and that `logs/bridge.log` shows the Discord adapter started successfully.
+5. Confirm the daemon came back and that `logs/bridge.log` shows the Discord adapter started successfully.
 
 The helper automatically creates `config.env.bak-*-discord-mention-gate` backups before rewriting.
 

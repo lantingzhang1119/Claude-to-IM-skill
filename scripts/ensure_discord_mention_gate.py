@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import plistlib
 import shutil
 import subprocess
 import time
@@ -83,9 +84,38 @@ def update_env_lines(lines: list[str]) -> tuple[list[str], list[str]]:
 
 
 def discover_cti_homes() -> list[Path]:
+    homes: dict[str, Path] = {}
+    for path in discover_launchagent_homes() + discover_filesystem_homes():
+        homes[str(path)] = path
+    return [homes[key] for key in sorted(homes)]
+
+
+def discover_filesystem_homes() -> list[Path]:
     home = Path.home()
     homes = sorted(path for path in home.glob(".claude-to-im*") if path.is_dir())
     return [path for path in homes if (path / "config.env").exists()]
+
+
+def discover_launchagent_homes() -> list[Path]:
+    agents_dir = Path.home() / "Library" / "LaunchAgents"
+    if not agents_dir.exists():
+        return []
+
+    homes: list[Path] = []
+    for plist_path in sorted(agents_dir.glob("com.claude-to-im*.plist")):
+        try:
+            with plist_path.open("rb") as handle:
+                payload = plistlib.load(handle)
+        except Exception:
+            continue
+        env = payload.get("EnvironmentVariables") or {}
+        cti_home = env.get("CTI_HOME")
+        if not cti_home:
+            continue
+        home = Path(str(cti_home)).expanduser().resolve()
+        if (home / "config.env").exists():
+            homes.append(home)
+    return homes
 
 
 def restart_bridge(cti_home: Path, daemon_script: Path) -> dict[str, object]:

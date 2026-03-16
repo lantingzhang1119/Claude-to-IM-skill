@@ -12,6 +12,7 @@ npm run build
 For Discord mention-only rollouts, inspect or apply the canonical gate before restart:
 
 ```bash
+python3 scripts/audit_discord_mention_gate.py --json
 python3 scripts/ensure_discord_mention_gate.py --cti-home "$BOT_HOME" --json
 ```
 

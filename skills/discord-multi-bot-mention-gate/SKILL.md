@@ -16,15 +16,21 @@ Use this skill for Discord-only routing problems in the multi-bot bridge. It giv
    - `runtime/status.json`
    - `logs/bridge.log`
 2. Confirm Discord is actually enabled before editing anything.
-3. From the bridge repo root, apply the canonical gate with:
+3. From the bridge repo root, audit what exists:
+
+```bash
+python3 scripts/audit_discord_mention_gate.py --json
+```
+
+4. Apply the canonical gate with:
 
 ```bash
 python3 scripts/ensure_discord_mention_gate.py --cti-home "$BOT_HOME" --json
 ```
 
-4. If the helper reports config changes, rerun it with `--restart` or restart the affected bridges manually.
-5. Run `npm test` and `npm run build` in the bridge repo.
-6. Prove real behavior in Discord:
+5. If the helper reports config changes, rerun it with `--restart` or restart the affected bridges manually.
+6. Run `npm test` and `npm run build` in the bridge repo.
+7. Prove real behavior in Discord:
    - `@CodexBot 只回复 1`
    - `@GeminiBot 只回复 2`
    - one plain message with no bot mention
